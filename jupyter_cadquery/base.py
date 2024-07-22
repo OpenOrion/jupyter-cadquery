@@ -17,7 +17,7 @@
 import numpy as np
 
 from cadquery import Compound, __version__
-
+from typing import Optional
 from cad_viewer_widget import show as viewer_show, get_default_sidecar, _set_default_sidecar, get_sidecar
 
 from jupyter_cadquery.progress import Progress
@@ -31,7 +31,7 @@ from jupyter_cadquery.ocp_utils import (
     np_bbox,
     is_line,
 )
-from jupyter_cadquery.tessellator import discretize_edge, tessellate, compute_quality, bbox_edges
+from jupyter_cadquery.tessellator import discretize_edge, tessellate, create_cache, make_key, compute_quality, bbox_edges
 from jupyter_cadquery.mp_tessellator import (
     is_apply_result,
     mp_tessellate,
@@ -50,6 +50,7 @@ from jupyter_cadquery.defaults import (
     show_args,
     preset,
 )
+from cachetools import LRUCache, cached
 
 
 UNSELECTED = 0
@@ -79,6 +80,7 @@ class _CADObject(object):
         parallel,
         progress,
         timeit,
+        cache
     ):
         raise NotImplementedError("not implemented yet")
 
@@ -112,6 +114,7 @@ class _Part(_CADObject):
         parallel=False,
         progress=None,
         timeit=False,
+        cache: Optional[LRUCache] = None
     ):
         self.id = f"{path}/{self.name}"
 
@@ -123,7 +126,10 @@ class _Part(_CADObject):
             t.info = str(bb)
 
         with Timer(timeit, self.name, "tessellate:     ", 2) as t:
-            func = mp_tessellate if parallel else tessellate
+            # @cached(cache, key=make_key)
+            if cache is None:
+                cache = create_cache()
+            func = cached(cache, make_key)(mp_tessellate if parallel else tessellate)
             result = func(
                 self.shape,
                 deviation=deviation,
@@ -209,6 +215,7 @@ class _Edges(_CADObject):
         parallel=False,
         progress=None,
         timeit=False,
+        cache=None
     ):
         self.id = f"{path}/{self.name}"
 
@@ -267,6 +274,7 @@ class _Vertices(_CADObject):
         parallel=False,
         progress=None,
         timeit=False,
+        cache=None
     ):
         self.id = f"{path}/{self.name}"
 
@@ -313,6 +321,7 @@ class _PartGroup(_CADObject):
         parallel=False,
         progress=None,
         timeit=False,
+        cache=None
     ):
 
         self.id = f"{path}/{self.name}"
@@ -341,6 +350,7 @@ class _PartGroup(_CADObject):
                     parallel,
                     progress,
                     timeit,
+                    cache
                 )
             )
         return result
@@ -378,7 +388,7 @@ class _PartGroup(_CADObject):
         return Compound._makeCompound(self.compounds())  # pylint: disable=protected-access
 
 
-def _tessellate_group(group, kwargs=None, progress=None, timeit=False):
+def _tessellate_group(group, kwargs=None, progress=None, timeit=False, cache: Optional[LRUCache] = None):
     if kwargs is None:
         kwargs = {}
 
@@ -392,6 +402,7 @@ def _tessellate_group(group, kwargs=None, progress=None, timeit=False):
         parallel=kwargs.get("parallel"),
         progress=progress,
         timeit=timeit,
+        cache=cache
     )
     states = group.to_state()
 

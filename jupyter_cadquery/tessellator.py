@@ -3,7 +3,7 @@
 import os
 import sys
 
-from cachetools import LRUCache, cached
+from cachetools import LRUCache
 
 import numpy as np
 
@@ -35,6 +35,34 @@ MAX_HASH_KEY = 2147483647
 #
 
 
+import hashlib
+import cadquery as cq
+from OCP.TopoDS import TopoDS_Vertex, TopoDS_Solid
+from typing import Union
+
+def vertex_to_Tuple(vertex: TopoDS_Vertex):
+    geom_point = BRep_Tool.Pnt_s(vertex)
+    return (geom_point.X(), geom_point.Y(), geom_point.Z())
+
+
+def get_part_checksum(solid: Union[cq.Solid, TopoDS_Solid], precision=3):
+    solid = solid if isinstance(solid, cq.Solid) else cq.Solid(solid)
+
+    vertices = np.array(
+        [vertex_to_Tuple(TopoDS.Vertex_s(v)) for v in solid._entities("Vertex")]
+    )
+
+    rounded_vertices = np.round(vertices, precision)
+
+    sorted_indices = np.lexsort(rounded_vertices.T)
+    sorted_vertices = rounded_vertices[sorted_indices]
+
+    vertices_hash = hashlib.md5(sorted_vertices.tobytes()).digest()
+    return hashlib.md5(vertices_hash).hexdigest()
+
+
+
+
 def make_key(
     shape, deviation, quality, angular_tolerance, compute_edges=True, compute_faces=True, debug=False
 ):  # pylint: disable=unused-argument
@@ -44,13 +72,32 @@ def make_key(
         shape = [shape]
 
     key = (
-        tuple((s.HashCode(MAX_HASH_KEY) for s in shape)),
+        tuple((get_part_checksum(s) for s in shape)),
         deviation,
         angular_tolerance,
         compute_edges,
         compute_faces,
     )
+    # print(f"Generated key: {key}")
     return key
+
+
+# def make_key(
+#     shape, deviation, quality, angular_tolerance, compute_edges=True, compute_faces=True, debug=False
+# ):  # pylint: disable=unused-argument
+#     # quality is a measure of bounding box and deviation, hence can be ignored (and should due to accuracy issues
+#     # of non optimal bounding boxes. debug and progress are also irrelevant for tessellation results)
+#     if not isinstance(shape, (tuple, list)):
+#         shape = [shape]
+
+#     key = (
+#         tuple((s.HashCode(MAX_HASH_KEY) for s in shape)),
+#         deviation,
+#         angular_tolerance,
+#         compute_edges,
+#         compute_faces,
+#     )
+#     return key
 
 
 def get_size(obj):
@@ -64,12 +111,14 @@ def get_size(obj):
     return size
 
 
-cache_size = os.environ.get("JCQ_CACHE_SIZE_MB")
-if cache_size is None:
-    cache_size = 128 * 1024 * 1024
-else:
-    cache_size = int(cache_size) * 1024 * 1024
-cache = LRUCache(maxsize=cache_size, getsizeof=get_size)
+
+def create_cache():
+    cache_size = os.environ.get("JCQ_CACHE_SIZE_MB")
+    if cache_size is None:
+        cache_size = 128 * 1024 * 1024
+    else:
+        cache_size = int(cache_size) * 1024 * 1024
+    return LRUCache(maxsize=cache_size, getsizeof=get_size)
 
 
 class Tessellator:
@@ -233,7 +282,6 @@ def compute_quality(bb, deviation=0.1):
 
 
 # cache key: (shape.hash, deviaton, angular_tolerance, compute_edges, compute_faces)
-@cached(cache, key=make_key)
 def tessellate(
     shapes,
     # only provided for managing cache:
@@ -244,6 +292,7 @@ def tessellate(
     compute_edges=True,
     debug=False,
 ):
+    # print(cache)
     compound = Compound._makeCompound(shapes) if len(shapes) > 1 else shapes[0]  # pylint: disable=protected-access
     tess = Tessellator()
     tess.compute(compound, quality, angular_tolerance, compute_faces, compute_edges, debug)
