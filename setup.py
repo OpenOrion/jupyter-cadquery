@@ -24,7 +24,7 @@ setup_args = {
     "install_requires": [
         "webcolors~=1.12",
         "voila~=0.3.5",
-        "numpy-quaternion==2022.4.1",
+        "numpy-quaternion==2023.0.4",
         "cad-viewer-widget~=1.4.0",
         "cachetools~=5.2.0",
     ],
