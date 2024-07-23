@@ -495,7 +495,7 @@ def insert_bbox(bbox, shapes, states):
     states[f"/{prefix}/BoundingBox"] = [3, 1]
 
 
-def _show(part_group, **kwargs):
+def _show(part_group, cache: Optional[LRUCache] = None, **kwargs):
     for k in kwargs:
         if get_default(k, "n/a") == "n/a":
             raise KeyError(f"Paramater {k} is not a valid argument for show()")
@@ -588,7 +588,7 @@ def _show(part_group, **kwargs):
                     init_pool()
                     keymap.reset()
 
-                shapes, states = _tessellate_group(part_group, tessellation_args(config), progress, timeit)
+                shapes, states = _tessellate_group(part_group, tessellation_args(config), progress, timeit, cache)
 
                 if parallel:
                     mp_get_results(shapes, progress)
