@@ -25,10 +25,10 @@ jobs:
           workflow: build_wheels.yml
           path: wheels
 
-      - name: List wheels
+      - name: List and move wheels
         run: |
           mkdir dist
-          mv wheels/**/*.whl dist
+          find wheels -name "*.whl" -exec bash -c 'mv "$1" "dist/$(basename "$1" .whl)_$(basename $(dirname "$1")).whl"' _ {} \;
           rm -rf wheels
           ls dist
 
