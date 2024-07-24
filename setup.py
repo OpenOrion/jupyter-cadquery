@@ -15,8 +15,8 @@ log.info("$PATH=%s", os.environ["PATH"])
 LONG_DESCRIPTION = "An extension to render cadquery objects in JupyterLab via pythreejs"
 
 setup_args = {
-    "name": "jupyter_cadquery",
-    "version": "3.5.2",
+    "name": "jupyter_cadquery_orion",
+    "version": "0.0.1",
     "description": "An extension to render cadquery objects in JupyterLab via pythreejs",
     "long_description": LONG_DESCRIPTION,
     "include_package_data": True,
