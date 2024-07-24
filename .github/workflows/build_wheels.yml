@@ -42,5 +42,5 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ocp-tessellate-orion-${{ matrix.os }}-cp${{ matrix.python-version }}
+          name: jupyter-cadquery-orion-${{ matrix.os }}-cp${{ matrix.python-version }}
           path: dist/*.whl
