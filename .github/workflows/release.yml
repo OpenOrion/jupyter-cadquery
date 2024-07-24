@@ -28,7 +28,13 @@ jobs:
       - name: List and move wheels
         run: |
           mkdir dist
-          find wheels -name "*.whl" -exec bash -c 'mv "$1" "dist/$(basename "$1" .whl)_$(basename $(dirname "$1")).whl"' _ {} \;
+          for artifact in wheels/*; do
+            for whl in "$artifact"/*.whl; do
+              base_name=$(basename "$artifact" | sed 's/jupyter-cadquery-orion-//')
+              new_name="jupyter-cadquery-orion-${base_name}.whl"
+              mv "$whl" "dist/$new_name"
+            done
+          done
           rm -rf wheels
           ls dist
 
