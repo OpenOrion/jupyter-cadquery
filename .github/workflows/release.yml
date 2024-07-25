@@ -30,9 +30,7 @@ jobs:
           mkdir dist
           for artifact in wheels/*; do
             for whl in "$artifact"/*.whl; do
-              base_name=$(basename "$artifact" | sed 's/jupyter-cadquery-orion-//')
-              new_name="jupyter-cadquery-orion-${base_name}.whl"
-              mv "$whl" "dist/$new_name"
+              mv "$whl" "dist/"
             done
           done
           rm -rf wheels
