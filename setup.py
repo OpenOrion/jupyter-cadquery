@@ -29,8 +29,7 @@ setup_args = {
         "cachetools~=5.2.0",
     ],
     "extras_require": {
-        "dev": {"jupyter-packaging", "cookiecutter", "twine", "bumpversion", "black", "pylint", "pyYaml"},
-        "prod": {"cadquery @ git+https://github.com/CadQuery/cadquery@master"},
+        "dev": {"jupyter-packaging", "cookiecutter", "twine", "bumpversion", "black", "pylint", "pyYaml"}
     },
     "packages": find_packages(),
     "scripts": ["jcv", "jcv.cmd"],
