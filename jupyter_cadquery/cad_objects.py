@@ -39,7 +39,9 @@ try:
 except ImportError:
     HAS_MASSEMBLY = False
 
+from cachetools import LRUCache
 
+from typing import Optional
 from cadquery import (
     Workplane,
     Sketch,
@@ -921,7 +923,7 @@ def to_assembly(
     return assembly
 
 
-def show(*cad_objs, names=None, colors=None, alphas=None, **kwargs):
+def show(*cad_objs, names=None, colors=None, alphas=None, cache: Optional[LRUCache] = None, **kwargs):
     """Show CAD objects in Jupyter
 
     Valid keywords:
@@ -1018,13 +1020,13 @@ def show(*cad_objs, names=None, colors=None, alphas=None, **kwargs):
 
         if len(assembly.objects) == 1 and isinstance(assembly.objects[0], PartGroup):
             # omit leading "PartGroup" group
-            return _show(assembly.objects[0], **kwargs)
+            return _show(assembly.objects[0], cache=cache, **kwargs)
         else:
-            return _show(assembly, **kwargs)
+            return _show(assembly, cache=cache, **kwargs)
 
     else:
 
-        return _show(None, **kwargs)
+        return _show(None, cache=cache, **kwargs)
 
 
 def reset():

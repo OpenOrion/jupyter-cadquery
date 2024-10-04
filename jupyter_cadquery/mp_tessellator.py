@@ -1,9 +1,8 @@
 import json
 
-from jupyter_cadquery.tessellator import cache, make_key
+from jupyter_cadquery.tessellator import make_key
 import multiprocessing
 from multiprocessing import shared_memory
-from cachetools import cached
 from jupyter_cadquery.mp_tess import mp_tess
 from jupyter_cadquery.ocp_utils import serialize
 
@@ -71,7 +70,6 @@ def is_apply_result(obj):
 
 # This will cache the ApplyResult object after calling mp_tess in an async way.
 # Cache will be updated in get_mp_result so that it holds the actual result
-@cached(cache, key=make_key)
 def mp_tessellate(
     shapes,
     deviation,  # only provided for managing cache

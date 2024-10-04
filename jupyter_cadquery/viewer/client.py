@@ -18,7 +18,8 @@ from jupyter_cadquery import PartGroup, Part
 from jupyter_cadquery.cad_objects import to_assembly
 from jupyter_cadquery.base import _tessellate_group, get_normal_len, _combined_bb
 from jupyter_cadquery.defaults import get_default, get_defaults, preset
-
+from typing import Optional
+from cachetools import LRUCache
 import pickle
 import zmq
 
@@ -80,7 +81,7 @@ class Progress:
         print(".", end="", flush=True)
 
 
-def _convert(*cad_objs, names=None, colors=None, alphas=None, **kwargs):
+def _convert(*cad_objs, names=None, colors=None, alphas=None, cache: Optional[LRUCache]=None, **kwargs):
     part_group = to_assembly(
         *cad_objs,
         names=names,
@@ -106,7 +107,7 @@ def _convert(*cad_objs, names=None, colors=None, alphas=None, **kwargs):
         if v is not None:
             config[k] = v
 
-    shapes, states = _tessellate_group(part_group, kwargs, Progress(), config.get("timeit"))
+    shapes, states = _tessellate_group(part_group, kwargs, Progress(), config.get("timeit"), cache=cache)
 
     config["normal_len"] = get_normal_len(
         preset("render_normals", config.get("render_normals")),
@@ -143,7 +144,7 @@ def animate(tracks, speed):
     send(data)
 
 
-def show(*cad_objs, names=None, colors=None, alphas=None, **kwargs):
+def show(*cad_objs, names=None, colors=None, alphas=None, cache: Optional[LRUCache] = None,**kwargs):
     """Show CAD objects in Jupyter
 
     Valid keywords:
@@ -176,7 +177,7 @@ def show(*cad_objs, names=None, colors=None, alphas=None, **kwargs):
     - theme:             Theme "light" or "dark" (default="light")
     - tools:             Show the viewer tools like the object tree
     - timeit:            Show rendering times, levels = False, 0,1,2,3,4,5 (default=False)
-
+    - cache:             LRU Cache for tesselation          
     NOT SUPPORTED ANY MORE:
     - mac_scrollbar      The default now
     - bb_factor:         Removed
@@ -184,7 +185,7 @@ def show(*cad_objs, names=None, colors=None, alphas=None, **kwargs):
     - quality            Use 'deviation'to control smoothness of rendered egdes
     """
 
-    data = _convert(*cad_objs, names=names, colors=colors, alphas=alphas, **kwargs)
+    data = _convert(*cad_objs, names=names, colors=colors, alphas=alphas, cache=cache, **kwargs)
     send(data)
 
 
