@@ -1,6 +1,8 @@
 """Tessellator class"""
 
 import os
+from pathlib import Path
+import pickle
 import sys
 
 from cachetools import LRUCache
@@ -92,7 +94,6 @@ def get_size(obj):
     return size
 
 
-
 def create_cache():
     cache_size = os.environ.get("JCQ_CACHE_SIZE_MB")
     if cache_size is None:
@@ -101,6 +102,16 @@ def create_cache():
         cache_size = int(cache_size) * 1024 * 1024
     return LRUCache(maxsize=cache_size, getsizeof=get_size)
 
+def save_cache(cache: LRUCache, path: Union[str, Path]):
+    with open(path, "wb") as f:
+        pickle.dump(cache, f)
+
+def load_cache(path: Union[str, Path]):
+    try:
+        with open(path, "rb") as f:
+            return pickle.load(f)
+    except FileNotFoundError:
+        return create_cache()
 
 class Tessellator:
     def __init__(self):
