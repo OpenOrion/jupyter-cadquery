@@ -1,11 +1,12 @@
 """Tessellator class"""
 
+from io import BytesIO
 import os
 from pathlib import Path
 import pickle
 import sys
 
-from cachetools import LRUCache
+from cachetools import LRUCache, cached
 
 import numpy as np
 
@@ -17,10 +18,13 @@ from OCP.BRepGProp import BRepGProp_Face
 from OCP.BRepMesh import BRepMesh_IncrementalMesh
 from OCP.TopLoc import TopLoc_Location
 from OCP.TopAbs import TopAbs_Orientation
-from OCP.TopTools import TopTools_IndexedDataMapOfShapeListOfShape, TopTools_IndexedMapOfShape
+from OCP.TopTools import (
+    TopTools_IndexedDataMapOfShapeListOfShape,
+    TopTools_IndexedMapOfShape,
+)
 from OCP.TopExp import TopExp, TopExp_Explorer
 from OCP.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_SOLID
-from OCP.TopoDS import TopoDS
+from OCP.TopoDS import TopoDS, TopoDS_Shape
 from OCP.BRepAdaptor import BRepAdaptor_Curve
 from OCP.GCPnts import GCPnts_QuasiUniformDeflection, GCPnts_QuasiUniformAbscissa
 
@@ -35,38 +39,48 @@ MAX_HASH_KEY = 2147483647
 #
 # Caching helpers
 #
-
-
 import hashlib
 import cadquery as cq
-from OCP.TopoDS import TopoDS_Vertex, TopoDS_Solid
 from typing import Union
-
-def vertex_to_Tuple(vertex: TopoDS_Vertex):
-    geom_point = BRep_Tool.Pnt_s(vertex)
-    return (geom_point.X(), geom_point.Y(), geom_point.Z())
+from cadquery.occ_impl.shapes import HASH_CODE_MAX
 
 
-def get_part_checksum(solid: Union[cq.Solid, TopoDS_Solid], precision=3):
-    solid = solid if isinstance(solid, cq.Solid) else cq.Solid(solid)
+@cached(
+    cache={},
+    key=lambda shape: (
+        shape.hashCode()
+        if isinstance(shape, cq.Shape)
+        else shape.HashCode(HASH_CODE_MAX)
+    ),
+)
+def get_shape_checksum(shape: Union[cq.Shape, TopoDS_Shape]):
+    # Ensure shape is of correct type
+    shape = shape if isinstance(shape, cq.Shape) else cq.Shape(shape)
 
-    vertices = np.array(
-        [vertex_to_Tuple(TopoDS.Vertex_s(v)) for v in solid._entities("Vertex")]
-    )
+    # Use BytesIO to store the BREP data
+    brep_io = BytesIO()
 
-    rounded_vertices = np.round(vertices, precision)
+    # Export the shape to BREP format
+    shape.exportBrep(brep_io)
 
-    sorted_indices = np.lexsort(rounded_vertices.T)
-    sorted_vertices = rounded_vertices[sorted_indices]
+    # Move to the beginning of the BytesIO stream
+    brep_io.seek(0)
 
-    vertices_hash = hashlib.md5(sorted_vertices.tobytes()).digest()
-    return hashlib.md5(vertices_hash).hexdigest()
+    # Get the binary data from the BytesIO stream
+    brep_data = brep_io.read()
 
-
+    # Ensure the data is in bytes and calculate the checksum
+    return hashlib.md5(brep_data).hexdigest()
 
 
 def make_key(
-    shape, deviation, quality, angular_tolerance, compute_edges=True, compute_faces=True, debug=False
+    shape,
+    deviation,
+    quality,
+    angular_tolerance,
+    compute_edges=True,
+    compute_faces=True,
+    debug=False,
 ):  # pylint: disable=unused-argument
     # quality is a measure of bounding box and deviation, hence can be ignored (and should due to accuracy issues
     # of non optimal bounding boxes. debug and progress are also irrelevant for tessellation results)
@@ -74,7 +88,7 @@ def make_key(
         shape = [shape]
 
     key = (
-        tuple((get_part_checksum(s) for s in shape)),
+        tuple((get_shape_checksum(s) for s in shape)),
         deviation,
         angular_tolerance,
         compute_edges,
@@ -102,9 +116,11 @@ def create_cache():
         cache_size = int(cache_size) * 1024 * 1024
     return LRUCache(maxsize=cache_size, getsizeof=get_size)
 
+
 def save_cache(cache: LRUCache, path: Union[str, Path]):
     with open(path, "wb") as f:
         pickle.dump(cache, f)
+
 
 def load_cache(path: Union[str, Path]):
     try:
@@ -112,6 +128,7 @@ def load_cache(path: Union[str, Path]):
             return pickle.load(f)
     except FileNotFoundError:
         return create_cache()
+
 
 class Tessellator:
     def __init__(self):
@@ -143,10 +160,14 @@ class Tessellator:
         self.shape = shape
 
         count = self.number_solids(shape)
-        with Timer(debug, "", f"mesh incrementally {'(parallel)' if count > 1 else ''}", 3):
+        with Timer(
+            debug, "", f"mesh incrementally {'(parallel)' if count > 1 else ''}", 3
+        ):
             # Remove previous mesh data
             BRepTools.Clean_s(shape)
-            BRepMesh_IncrementalMesh(shape, quality, False, angular_tolerance, count > 1)
+            BRepMesh_IncrementalMesh(
+                shape, quality, False, angular_tolerance, count > 1
+            )
 
         if compute_faces:
             with Timer(debug, "", "get nodes, triangles and normals", 3):
@@ -195,7 +216,9 @@ class Tessellator:
                 flat = []
                 for i in range(1, poly.NbTriangles() + 1):
                     coord = poly.Triangle(i).Get()
-                    flat.extend((coord[0] + offset, coord[i1] + offset, coord[i2] + offset))
+                    flat.extend(
+                        (coord[0] + offset, coord[i1] + offset, coord[i2] + offset)
+                    )
                 self.triangles.extend(flat)
 
                 # add normals
@@ -207,7 +230,9 @@ class Tessellator:
                         prop.Normal(u, v, p_buf, n_buf)
                         if n_buf.SquareMagnitude() > 0:
                             n_buf.Normalize()
-                        flat.extend(n_buf.Reverse().Coord() if internal else n_buf.Coord())
+                        flat.extend(
+                            n_buf.Reverse().Coord() if internal else n_buf.Coord()
+                        )
                     self.normals.extend(flat)
 
                 offset += poly.NbNodes()
@@ -268,7 +293,10 @@ class Tessellator:
 def compute_quality(bb, deviation=0.1):
     # Since tessellation caching depends on quality, try to come up with stable a quality value
     quality = round_sig(
-        (round_sig(bb.xsize, 3) + round_sig(bb.ysize, 3) + round_sig(bb.zsize, 3)) / 300 * deviation, 3
+        (round_sig(bb.xsize, 3) + round_sig(bb.ysize, 3) + round_sig(bb.zsize, 3))
+        / 300
+        * deviation,
+        3,
     )
     return quality
 
@@ -284,9 +312,13 @@ def tessellate(
     compute_edges=True,
     debug=False,
 ):
-    compound = Compound._makeCompound(shapes) if len(shapes) > 1 else shapes[0]  # pylint: disable=protected-access
+    compound = (
+        Compound._makeCompound(shapes) if len(shapes) > 1 else shapes[0]
+    )  # pylint: disable=protected-access
     tess = Tessellator()
-    tess.compute(compound, quality, angular_tolerance, compute_faces, compute_edges, debug)
+    tess.compute(
+        compound, quality, angular_tolerance, compute_faces, compute_edges, debug
+    )
     vertices = tess.get_vertices()
     return {
         "vertices": vertices,
@@ -305,13 +337,19 @@ def discretize_edge(edge, deflection=0.1, num=None):
     else:
         discretizer = GCPnts_QuasiUniformDeflection()
         discretizer.Initialize(
-            curve_adaptator, deflection, curve_adaptator.FirstParameter(), curve_adaptator.LastParameter()
+            curve_adaptator,
+            deflection,
+            curve_adaptator.FirstParameter(),
+            curve_adaptator.LastParameter(),
         )
 
     if not discretizer.IsDone():
         raise AssertionError("Discretizer not done.")
 
-    points = [curve_adaptator.Value(discretizer.Parameter(i)).Coord() for i in range(1, discretizer.NbPoints() + 1)]
+    points = [
+        curve_adaptator.Value(discretizer.Parameter(i)).Coord()
+        for i in range(1, discretizer.NbPoints() + 1)
+    ]
 
     # return tuples representing the single lines of the egde
     edges = []
