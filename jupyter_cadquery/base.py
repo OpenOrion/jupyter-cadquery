@@ -15,7 +15,6 @@
 #
 
 import numpy as np
-from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
 
 from cadquery import Compound, __version__
 from typing import Optional
@@ -118,17 +117,6 @@ class _Part(_CADObject):
         cache: Optional[LRUCache] = None
     ):
         self.id = f"{path}/{self.name}"
-
-
-        if loc.wrapped.Transformation().IsNegative():
-            new_shapes = []
-            for shape in self.shape:
-                tsrf = loc.wrapped.Transformation()
-                transformer = BRepBuilderAPI_Transform(shape, tsrf, False)
-                modified_shape = transformer.Shape()
-                new_shapes.append(modified_shape)
-            self.shape = new_shapes
-            loc = None
 
         # A first rough estimate of the bounding box.
         # Will be too large, but is sufficient for computing the quality
