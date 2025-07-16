@@ -26,7 +26,7 @@ setup_args = {
         "voila~=0.3.5",
         "numpy-quaternion>=2022.4.1",
         "cad-viewer-widget~=1.4.0",
-        "cachetools~=5.2.0",
+        "cachetools~=5.5.0",
     ],
     "extras_require": {
         "dev": {"jupyter-packaging", "cookiecutter", "twine", "bumpversion", "black", "pylint", "pyYaml"},
