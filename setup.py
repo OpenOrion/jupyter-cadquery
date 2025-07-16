@@ -22,7 +22,7 @@ setup_args = {
     "include_package_data": True,
     "python_requires": ">=3.8",
     "install_requires": [
-        "webcolors~=1.12",
+        "webcolors~=24.8.0",
         "voila~=0.3.5",
         "numpy-quaternion>=2022.4.1",
         "cad-viewer-widget~=1.4.0",
