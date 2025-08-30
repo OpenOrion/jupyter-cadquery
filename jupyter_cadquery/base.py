@@ -158,7 +158,6 @@ class _Part(_CADObject):
         else:
             color = self.color.web_color
             alpha = self.color.a
-
         return {
             "id": self.id,
             "type": "shapes",
@@ -621,3 +620,116 @@ def _show(part_group, cache: Optional[LRUCache] = None, **kwargs):
                 _set_default_sidecar(sidecar_backup)
 
     return cv
+
+
+# Create a custom Part that works with pre-tessellated mesh data
+class MeshlyPart(_Part):
+    def __init__(self, mesh, name="Mesh", color=None):
+        self.mesh = mesh
+        self.name = name
+        self.id = None
+        self.color = Color(get_default("default_color") if color is None else color)
+        # Set dummy shape to None since we have mesh data directly
+        self.shape = None
+        self.set_states(True, True)  # show_faces=True, show_edges=True
+        self.renderback = False
+        
+    def collect_shapes(
+        self,
+        path,
+        loc,
+        deviation,
+        angular_tolerance,
+        edge_accuracy,
+        render_edges,
+        parallel=False,
+        progress=None,
+        timeit=False,
+        cache=None
+    ):
+        self.id = f"{path}/{self.name}"
+        
+        if progress is not None:
+            progress.update()
+            
+        # Convert mesh data to the format expected by jupyter-cadquery
+        # The mesh is already tessellated, so we just need to format it correctly
+        vertices = self.mesh.vertices
+        indices = self.mesh.indices
+        
+        # Calculate face normals from triangles
+        triangles = indices.reshape(-1, 3)
+        
+        face_normals = np.zeros((len(triangles), 3))
+        
+        # Calculate triangle vertices using broadcasting
+        v0 = vertices[triangles[:, 0]]
+        v1 = vertices[triangles[:, 1]]
+        v2 = vertices[triangles[:, 2]]
+
+        # Calculate triangle edges
+        edge1 = v1 - v0
+        edge2 = v2 - v0
+
+        if hasattr(self.mesh, 'normals') and self.mesh.normals is not None:
+            normals = self.mesh.normals
+        else:
+            # Calculate face normals using cross product
+            face_normals = np.cross(edge1, edge2)
+
+            # Normalize face normals
+            face_normal_lengths = np.linalg.norm(face_normals, axis=1, keepdims=True)
+            valid_faces = face_normal_lengths.flatten() > 0
+            face_normals[valid_faces] = face_normals[valid_faces] / face_normal_lengths[valid_faces]
+
+            # Initialize vertex normals array
+            normals = np.zeros_like(vertices)
+
+            # Use np.add.at to accumulate face normals to vertices
+            # This is a vectorized way to handle the accumulation
+            np.add.at(normals, triangles[:, 0], face_normals)
+            np.add.at(normals, triangles[:, 1], face_normals)
+            np.add.at(normals, triangles[:, 2], face_normals)
+            
+            # Normalize vertex normals
+            norms = np.linalg.norm(normals, axis=1)
+            valid_norms = norms > 0
+            normals[valid_norms] = normals[valid_norms] / norms[valid_norms, np.newaxis]
+
+        mesh_data = {
+            "vertices": vertices,  # numpy array
+            "normals": normals,    # calculated vertex normals
+            "triangles": indices.flatten() if indices.ndim > 1 else indices,  # flattened triangle indices
+            "normals": normals,  # vertex normals
+            "edges": []  # Optional: could extract edge data from triangles if needed
+        }
+        
+        # Calculate bounding box from vertices
+        vertices = self.mesh.vertices
+        bb = {
+            "xmin": float(vertices[:, 0].min()),
+            "xmax": float(vertices[:, 0].max()),
+            "ymin": float(vertices[:, 1].min()),
+            "ymax": float(vertices[:, 1].max()),
+            "zmin": float(vertices[:, 2].min()),
+            "zmax": float(vertices[:, 2].max()),
+        }
+        
+        if isinstance(self.color, tuple):
+            color = [c.web_color for c in self.color]
+            alpha = 1.0
+        else:
+            color = self.color.web_color
+            alpha = self.color.a
+
+        return {
+            "id": self.id,
+            "type": "shapes",
+            "name": self.name,
+            "shape": mesh_data,
+            "color": color,
+            "alpha": alpha,
+            "renderback": self.renderback,
+            "accuracy": deviation,  # Use the provided deviation as accuracy
+            "bb": bb,
+        }

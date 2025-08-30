@@ -39,6 +39,19 @@ try:
 except ImportError:
     HAS_MASSEMBLY = False
 
+try:
+    from meshly import Mesh
+
+    HAS_MESHLY = True
+
+    from jupyter_cadquery.base import MeshlyPart
+    import numpy as np
+    
+
+
+except ImportError:
+    HAS_MESHLY = False
+
 from cachetools import LRUCache
 
 from typing import Optional
@@ -84,7 +97,7 @@ OBJECTS = {"objs": [], "names": [], "colors": [], "alphas": []}
 
 
 def plugins():
-    if HAS_BUILD123D or HAS_ALG123D or HAS_MASSEMBLY:
+    if HAS_BUILD123D or HAS_ALG123D or HAS_MASSEMBLY or HAS_MESHLY:
         print("Plugins loaded:")
         if HAS_BUILD123D:
             print("- build123d")
@@ -92,6 +105,8 @@ def plugins():
             print("- alg123d")
         if HAS_MASSEMBLY:
             print("- cadquery-massembly")
+        if HAS_MESHLY:
+            print("- meshly")
 
 
 def web_color(name):
@@ -471,6 +486,12 @@ def _from_mate(cad_obj, name="Mate", mate_scale=1):
     return Edges(to_edge(cad_obj, scale=mate_scale), name=name, width=3, color=rgb)
 
 
+def _from_meshly_mesh(mesh, obj_id, name="Mesh", color=None, alpha=None, show_parent=True):
+    """Convert a Meshly Mesh to jupyter-cadquery Part"""
+    color = get_color(color, get_default("default_color"), alpha)
+    result = MeshlyPart(mesh, "%s_%d" % (name, obj_id), color=color)
+    return result
+
 def from_assembly(cad_obj, top, loc=None, render_mates=False, mate_scale=1, default_color=None):
     loc = Location()
     render_loc = cad_obj.loc
@@ -694,6 +715,20 @@ def to_assembly(
         if isinstance(cad_obj, (PartGroup, Part, Faces, Edges, Vertices)):
             _debug(f"CAD Obj {obj_id}: PartGroup, Part, Faces, Edges, Vertices")
             assembly.add(cad_obj)
+
+        elif HAS_MESHLY and isinstance(cad_obj, Mesh):
+            _debug(f"CAD Obj {obj_id}: Meshly Mesh")
+            obj_name = "Mesh" if obj_name is None else obj_name
+            assembly.add(
+                _from_meshly_mesh(
+                    cad_obj,
+                    obj_id,
+                    obj_name,
+                    obj_color,
+                    obj_alpha,
+                    show_parent=show_parent,
+                )
+            )
 
         elif HAS_MASSEMBLY and isinstance(cad_obj, MAssembly):
             _debug(f"CAD Obj {obj_id}: MAssembly")
