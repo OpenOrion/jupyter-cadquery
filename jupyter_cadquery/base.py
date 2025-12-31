@@ -696,13 +696,30 @@ class MeshlyPart(_Part):
             valid_norms = norms > 0
             normals[valid_norms] = normals[valid_norms] / norms[valid_norms, np.newaxis]
 
+        # Ensure correct dtypes for the viewer (float32 for positions/normals, uint32 for indices)
+        vertices_f32 = vertices.astype(np.float32) if vertices.dtype != np.float32 else vertices
+        normals_f32 = normals.astype(np.float32) if normals.dtype != np.float32 else normals
+        indices_flat = indices.flatten() if indices.ndim > 1 else indices
+        indices_u32 = indices_flat.astype(np.uint32) if indices_flat.dtype != np.uint32 else indices_flat
+        
+        # Handle edges
+        if hasattr(self.mesh, 'edges') and self.mesh.edges is not None:
+            edges = self.mesh.edges.reshape(-1, 2, 3)
+            edges_f32 = edges.astype(np.float32) if edges.dtype != np.float32 else edges
+        else:
+            edges_f32 = np.empty((0, 2, 3), dtype=np.float32)
+
         mesh_data = {
-            "vertices": vertices,  # numpy array
-            "normals": normals,    # calculated vertex normals
-            "triangles": indices.flatten() if indices.ndim > 1 else indices,  # flattened triangle indices
-            "normals": normals,  # vertex normals
-            "edges": []  # Optional: could extract edge data from triangles if needed
+            "vertices": vertices_f32,
+            "normals": normals_f32,
+            "triangles": indices_u32,
+            "edges": edges_f32
         }
+        
+        # Add segments_per_edge if available (convert to uint32 for JS compatibility)
+        if hasattr(self.mesh, 'segments_per_edge') and self.mesh.segments_per_edge is not None:
+            spe = self.mesh.segments_per_edge
+            mesh_data["segments_per_edge"] = spe.astype(np.uint32) if spe.dtype != np.uint32 else spe
         
         # Calculate bounding box from vertices
         vertices = self.mesh.vertices
