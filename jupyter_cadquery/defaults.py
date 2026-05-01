@@ -108,10 +108,10 @@ class Defaults:
             #
             "viewer": "",
             "anchor": "right",
-            "cad_width": 800,
+            "cad_width": 1200,
             "tree_width": 250,
-            "height": 600,
-            "theme": "light",
+            "height": 900,
+            "theme": "dark",
             "pinning": False,
             #
             # render options

@@ -8,15 +8,43 @@ import threading
 import time
 import zmq
 
-from IPython.display import display, clear_output
+from IPython.display import display, clear_output, Javascript
 import ipywidgets as widgets
+from cad_viewer_widget import open_viewer as cvw_open_viewer
 from jupyter_cadquery import show
 from jupyter_cadquery import AnimationTrack
 from jupyter_cadquery.defaults import get_default, create_args, add_shape_args, set_defaults
-from jupyter_cadquery.logo import LOGO_DATA
 from jupyter_cadquery.utils import px
 
 VIEWER = None
+
+AUTO_RESIZE_JS = """
+(function() {
+    function resizeViewer() {
+        var cv = window.currentCadViewer;
+        if (!cv || !cv.viewer) return;
+        var glass = cv.model.get("glass");
+        var treeWidth = glass ? 0 : (cv.model.get("tree_width") || 250);
+        var toolbarHeight = 44;
+        var cadWidth = Math.max(640, window.innerWidth - treeWidth - 16);
+        var height = Math.max(400, window.innerHeight - toolbarHeight);
+        cv.viewer.resizeCadView(cadWidth, treeWidth || 250, height, glass);
+    }
+    var debounceTimer;
+    function debouncedResize() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(resizeViewer, 100);
+    }
+    window.addEventListener("resize", debouncedResize);
+    // Poll until viewer is ready, then do initial resize
+    var poll = setInterval(function() {
+        if (window.currentCadViewer && window.currentCadViewer.viewer) {
+            clearInterval(poll);
+            resizeViewer();
+        }
+    }, 200);
+})();
+"""
 
 
 def _log(typ, *msg):
@@ -201,8 +229,14 @@ class Viewer:
         # remove jupyter cadquery start message
         clear_output()
 
-        self.viewer = show(theme=theme, cad_width=cad_width, height=cad_height, glass=glass_mode, pinning=False)
-        self.splash = True
+        self.viewer = cvw_open_viewer(
+            cad_width=cad_width, height=cad_height, theme=theme,
+            glass=glass_mode, pinning=False,
+        )
+        self.splash = False
+
+        # Inject auto-resize to fill available window space
+        display(Javascript(AUTO_RESIZE_JS))
 
         self.log_view = widgets.Accordion(children=[self.log_output])
         self.log_view.set_title(0, "Log")
