@@ -56,6 +56,8 @@ class Viewer:
         self.log_output = widgets.Output(layout=widgets.Layout(height="400px", overflow="scroll"))
         self.splash = None
         self.log_view = None
+        self.accumulated = []  # list of (shapes, states) for accumulation mode
+        self._accumulate_config = None  # last config for flush display
 
     def _display(self, data, logo=False):
         mesh_data = data["data"]
@@ -110,6 +112,82 @@ class Viewer:
         self.viewer.add_shapes(**mesh_data, **kwargs)
         info(create_args(config))
         info(add_shape_args(config))
+
+    def _accumulate(self, data):
+        """Accumulate shapes silently. Call flush to render all at once."""
+        mesh_data = data["data"]
+        config = data["config"]
+        name = config.pop("_name", None)
+
+        self.accumulated.append((mesh_data["shapes"], mesh_data["states"], name))
+        self._accumulate_config = config
+        info(f"Accumulated {len(self.accumulated)} parts")
+
+    def _flush_accumulated(self):
+        """Render all accumulated shapes in one batch."""
+        import copy
+        from jupyter_cadquery.ocp_utils import BoundingBox
+
+        config = self._accumulate_config or {}
+
+        combined_shapes = {
+            "name": "Accumulated",
+            "id": "/Accumulated",
+            "loc": None,
+            "parts": [],
+        }
+        combined_states = {}
+        combined_bb = None
+
+        def _update_ids(node, old_prefix, new_prefix):
+            """Recursively update all 'id' fields in the shape tree."""
+            if "id" in node:
+                if node["id"].startswith(old_prefix):
+                    node["id"] = new_prefix + node["id"][len(old_prefix):]
+            if "parts" in node:
+                for child in node["parts"]:
+                    _update_ids(child, old_prefix, new_prefix)
+
+        for i, (shapes, states, part_name) in enumerate(self.accumulated):
+            part = copy.deepcopy(shapes)
+            label = part_name or shapes.get("name", f"Part_{i}")
+
+            old_prefix = f"/{shapes.get('name', '')}"
+            new_prefix = f"/Accumulated/{label}"
+
+            part["name"] = label
+            if "loc" not in part:
+                part["loc"] = None
+            part.pop("bb", None)
+
+            _update_ids(part, old_prefix, new_prefix)
+            combined_shapes["parts"].append(part)
+
+            for k, v in states.items():
+                if k.startswith(old_prefix):
+                    combined_states[new_prefix + k[len(old_prefix):]] = v
+                else:
+                    combined_states[k] = v
+
+            if shapes.get("bb"):
+                if combined_bb is None:
+                    combined_bb = BoundingBox(shapes["bb"])
+                else:
+                    combined_bb.update(shapes["bb"])
+
+        combined_shapes["bb"] = combined_bb.to_dict() if combined_bb else {"xmin": 0, "xmax": 0, "ymin": 0, "ymax": 0, "zmin": 0, "zmax": 0}
+
+        # Only reset camera on first render; subsequent renders keep camera position
+        if len(self.accumulated) == 1:
+            config["reset_camera"] = True
+        else:
+            config["reset_camera"] = False
+
+        combined_data = {
+            "data": {"shapes": combined_shapes, "states": combined_states},
+            "config": config,
+        }
+        self._display(combined_data)
 
     def start_viewer(self, cad_width, cad_height, theme, glass_mode):
         info(f"zmq_port:   {self.zmq_port}")
@@ -167,6 +245,42 @@ class Viewer:
                     try:
                         t = time.time()
                         self._display(data)
+                        return_success(t)
+
+                    except Exception as ex:
+                        error_msg = f"{type(ex).__name__}: {ex}"
+                        return_error(error_msg)
+
+                elif data.get("type") == "accumulate":
+                    try:
+                        t = time.time()
+                        self._accumulate(data)
+                        return_success(t)
+
+                    except Exception as ex:
+                        error_msg = f"{type(ex).__name__}: {ex}"
+                        return_error(error_msg)
+
+                elif data.get("type") == "clear":
+                    try:
+                        t = time.time()
+                        self.accumulated = []
+                        self._accumulate_config = None
+                        info("Accumulator cleared")
+                        return_success(t)
+
+                    except Exception as ex:
+                        error_msg = f"{type(ex).__name__}: {ex}"
+                        return_error(error_msg)
+
+                elif data.get("type") == "flush":
+                    try:
+                        t = time.time()
+                        if self.accumulated:
+                            self._flush_accumulated()
+                            info(f"Flushed {len(self.accumulated)} accumulated parts")
+                        else:
+                            info("Flush called but nothing accumulated")
                         return_success(t)
 
                     except Exception as ex:

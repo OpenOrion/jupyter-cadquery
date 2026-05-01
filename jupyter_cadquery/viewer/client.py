@@ -144,7 +144,7 @@ def animate(tracks, speed):
     send(data)
 
 
-def show(*cad_objs, names=None, colors=None, alphas=None, cache: Optional[LRUCache] = None,**kwargs):
+def show(*cad_objs, names=None, colors=None, alphas=None, cache: Optional[LRUCache] = None, accumulate: bool = False, name: str = None, **kwargs):
     """Show CAD objects in Jupyter
 
     Valid keywords:
@@ -186,7 +186,21 @@ def show(*cad_objs, names=None, colors=None, alphas=None, cache: Optional[LRUCac
     """
 
     data = _convert(*cad_objs, names=names, colors=colors, alphas=alphas, cache=cache, **kwargs)
+    if accumulate:
+        data["type"] = "accumulate"
+        if name:
+            data["config"]["_name"] = name
     send(data)
+
+
+def clear_viewer():
+    """Clear all accumulated shapes from the viewer."""
+    send({"type": "clear"})
+
+
+def flush_viewer():
+    """Flush accumulated shapes - renders all at once without intermediate rebuilds."""
+    send({"type": "flush"})
 
 
 def reset():
